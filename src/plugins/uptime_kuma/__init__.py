@@ -9,7 +9,6 @@ from typing import Any
 from nonebot import get_bots, get_driver, get_plugin_config, logger, on_command
 from nonebot.adapters.qq import Bot, GroupMessageCreateEvent
 from nonebot.drivers import HTTPServerSetup, Request, Response
-from nonebot.rule import to_me
 from pydantic import BaseModel, Field
 from yarl import URL
 
@@ -97,7 +96,7 @@ get_driver().setup_http_server(
     )
 )
 
-group_info = on_command("群信息", aliases={"group-info"}, rule=to_me(), priority=10)
+group_info = on_command("群信息", aliases={"group-info"}, priority=10)
 
 
 @group_info.handle()
@@ -111,7 +110,7 @@ async def show_group_info(event: GroupMessageCreateEvent) -> None:
     )
 
 
-user_id = on_command("我的ID", aliases={"user-id"}, rule=to_me(), priority=10)
+user_id = on_command("我的ID", aliases={"user-id"}, priority=10)
 
 
 @user_id.handle()
