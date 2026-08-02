@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import secrets
 from typing import Any
 
 from nonebot import get_bots, get_driver, get_plugin_config, logger, on_command
@@ -17,7 +16,6 @@ class Config(BaseModel):
     """Plugin settings loaded from the NoneBot environment."""
 
     target_group_openid: str = Field(min_length=1)
-    uptime_kuma_webhook_token: str = Field(min_length=16)
 
 
 config = get_plugin_config(Config)
@@ -29,13 +27,6 @@ def _json_response(status_code: int, payload: dict[str, str]) -> Response:
         headers={"Content-Type": "application/json; charset=utf-8"},
         content=json.dumps(payload, ensure_ascii=False),
     )
-
-
-def _webhook_token(request: Request) -> str:
-    authorization = request.headers.get("Authorization", "")
-    if authorization.startswith("Bearer "):
-        return authorization.removeprefix("Bearer ")
-    return request.headers.get("X-Webhook-Token", "")
 
 
 def _format_webhook_message(payload: Any, raw_body: Any) -> str:
@@ -61,10 +52,7 @@ def _get_qq_bot() -> Bot | None:
 
 
 async def handle_uptime_kuma_webhook(request: Request) -> Response:
-    """Validate an Uptime Kuma webhook and forward it to the configured group."""
-    supplied_token = _webhook_token(request)
-    if not secrets.compare_digest(supplied_token, config.uptime_kuma_webhook_token):
-        return _json_response(401, {"detail": "invalid webhook token"})
+    """Forward an Uptime Kuma webhook to the configured group."""
 
     message = _format_webhook_message(request.json, request.content)
     if not message:
