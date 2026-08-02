@@ -29,11 +29,20 @@ are formatted and sent as-is. Use `@机器人 /我的ID` to retrieve your QQ Ope
 user OpenID. The bot must be invited to the target group and granted the QQ
 Official Bot permissions needed to receive @ messages and send group messages.
 
+## QQ Official Bot Webhook
+
+This project receives QQ events through HTTP Webhook, not a gateway WebSocket.
+In the QQ Developer Platform, set the callback URL to
+`https://<your-host>/qq/webhook` and complete its verification request. Keep
+`QQ_USE_WEBSOCKET=false` and `QQ_VERIFY_WEBHOOK=true` in `.env`; the adapter
+uses `QQ_SECRET` to verify signed events. The same domain receives both paths:
+`/qq/webhook` for QQ and `/uptime-kuma` for Uptime Kuma.
+
 ## Docker Deployment
 
 1. Create `.env` from `.env.example` and fill in all QQ and webhook settings.
    The container reads this file at runtime; it is deliberately excluded from
-   the image. Keep `DRIVER=~fastapi+~httpx+~websockets`: the QQ adapter needs
+   the image. Keep `DRIVER=~fastapi+~httpx`: the QQ adapter needs
    the HTTP client driver to request access tokens.
 2. Build and start the service:
 
@@ -44,6 +53,6 @@ Official Bot permissions needed to receive @ messages and send group messages.
 3. Inspect the service with `docker compose logs -f notification-bot`.
 
 The application listens on port `8080`; map it behind an HTTPS reverse proxy
-before exposing `/uptime-kuma` to the internet. Stop it with
+before exposing `/qq/webhook` and `/uptime-kuma` to the internet. Stop it with
 `docker compose down`. For a non-container installation, use
 `pip install -r requirements.txt` and start with `python bot.py`.

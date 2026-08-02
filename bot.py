@@ -38,6 +38,7 @@ def configure_qq_adapter() -> None:
                 "id": credentials["QQ_APP_ID"],
                 "token": credentials["QQ_TOKEN"],
                 "secret": credentials["QQ_SECRET"],
+                "use_websocket": _get_boolean_env("QQ_USE_WEBSOCKET", False),
                 "intent": {
                     "c2c_group_at_messages": _get_boolean_env(
                         "QQ_C2C_GROUP_AT_MESSAGES", True
