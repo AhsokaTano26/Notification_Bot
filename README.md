@@ -21,12 +21,14 @@ See [Docs](https://nonebot.dev/)
 2. In Uptime Kuma, create a Webhook notification pointing to
    `POST https://<your-host>/uptime-kuma`.
 
-The webhook forwards `msg` or `message` from a JSON body; other JSON payloads
-are formatted and sent as-is. Use `/我的ID` to retrieve your QQ OpenAPI user
-OpenID. The bot must be invited to the target group and granted the QQ Official
-Bot permissions needed to receive group messages and send group messages. The
-Uptime Kuma endpoint does not require a token, so restrict public access to it
-at the reverse proxy or platform firewall when possible.
+For Uptime Kuma's default JSON body, the Bot formats `monitor` and `heartbeat`
+fields into monitor name, type, address, ID, status, latency, and timestamp;
+`msg` is retained as the alert detail. Other JSON payloads are sent as-is. Use
+`/我的ID` to retrieve your QQ OpenAPI user OpenID. The bot must be invited to the
+target group and granted the QQ Official Bot permissions needed to receive group
+messages and send group messages. The Uptime Kuma endpoint does not require a
+token, so restrict public access to it at the reverse proxy or platform firewall
+when possible.
 
 ## QQ Official Bot Webhook
 

@@ -51,10 +51,68 @@ def _get_qq_bot() -> Bot | None:
     return None
 
 
-def _uptime_kuma_markdown(message: str) -> str:
-    """Format an alert as safe, readable QQ Markdown."""
-    content = message[:1800].replace("```", "'''")
-    return f"## 🔔 Uptime Kuma 通知\n\n```text\n{content}\n```"
+def _object(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _first_value(data: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = data.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return None
+
+
+def _code(value: str) -> str:
+    """Make a value safe for a single-line Markdown code span."""
+    return value.replace("`", "'").replace("\n", " ")[:180]
+
+
+def _status(status: Any) -> tuple[str, str]:
+    labels = {
+        "0": ("🔴", "故障"),
+        "1": ("🟢", "正常"),
+        "2": ("🟡", "等待中"),
+        "3": ("🔵", "维护中"),
+    }
+    return labels.get(str(status), ("⚪", "未知状态"))
+
+
+def _uptime_kuma_notification(payload: Any, raw_body: Any) -> tuple[str, str]:
+    """Build Markdown and plain-text views of an Uptime Kuma alert."""
+    message = _format_webhook_message(payload, raw_body)
+    monitor = _object(payload.get("monitor")) if isinstance(payload, dict) else {}
+    heartbeat = _object(payload.get("heartbeat")) if isinstance(payload, dict) else {}
+    icon, status = _status(heartbeat.get("status"))
+
+    fields: list[tuple[str, str]] = []
+    if name := _first_value(monitor, "name"):
+        fields.append(("监控", name))
+    if monitor_type := _first_value(monitor, "type"):
+        fields.append(("类型", monitor_type))
+    if url := _first_value(monitor, "url", "hostname"):
+        fields.append(("地址", url))
+    if monitor_id := _first_value(monitor, "id"):
+        fields.append(("监控 ID", monitor_id))
+    if ping := _first_value(heartbeat, "ping"):
+        fields.append(("延迟", f"{ping} ms"))
+    if time := _first_value(heartbeat, "time"):
+        fields.append(("时间", time))
+
+    markdown_fields = "\n".join(
+        f"- **{label}**：`{_code(value)}`" for label, value in fields
+    )
+    plain_fields = "\n".join(f"{label}：{value}" for label, value in fields)
+    heading = f"## {icon} Uptime Kuma · {status}"
+    markdown_prefix = f"{heading}\n\n{markdown_fields}" if markdown_fields else heading
+    plain_prefix = f"{icon} Uptime Kuma · {status}\n{plain_fields}".strip()
+
+    markdown_message = message[: max(256, 1800 - len(markdown_prefix))].replace(
+        "```", "'''"
+    )
+    markdown = f"{markdown_prefix}\n\n```text\n{markdown_message}\n```"
+    plain_text = f"{plain_prefix}\n\n{message}".strip()
+    return markdown, plain_text
 
 
 async def _send_markdown_reply(
@@ -74,7 +132,7 @@ async def _send_markdown_reply(
 async def handle_uptime_kuma_webhook(request: Request) -> Response:
     """Forward an Uptime Kuma webhook to the configured group."""
 
-    message = _format_webhook_message(request.json, request.content)
+    markdown, message = _uptime_kuma_notification(request.json, request.content)
     if not message:
         return _json_response(400, {"detail": "webhook body is empty"})
 
@@ -86,7 +144,7 @@ async def handle_uptime_kuma_webhook(request: Request) -> Response:
     try:
         await qq_bot.send_to_group(
             group_openid=config.target_group_openid,
-            message=MessageSegment.markdown(_uptime_kuma_markdown(message)),
+            message=MessageSegment.markdown(markdown),
         )
     except Exception:
         logger.warning("QQ Markdown notification failed; sending plain text instead")
