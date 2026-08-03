@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 from nonebot import get_bots, get_driver, get_plugin_config, logger, on_command
-from nonebot.adapters.qq import Bot, GroupMessageCreateEvent
+from nonebot.adapters.qq import Bot, GroupMessageCreateEvent, MessageSegment
 from nonebot.drivers import HTTPServerSetup, Request, Response
 from pydantic import BaseModel, Field
 from yarl import URL
@@ -51,6 +51,26 @@ def _get_qq_bot() -> Bot | None:
     return None
 
 
+def _uptime_kuma_markdown(message: str) -> str:
+    """Format an alert as safe, readable QQ Markdown."""
+    content = message[:1800].replace("```", "'''")
+    return f"## 🔔 Uptime Kuma 通知\n\n```text\n{content}\n```"
+
+
+async def _send_markdown_reply(
+    bot: Bot,
+    event: GroupMessageCreateEvent,
+    markdown: str,
+    fallback_text: str,
+) -> None:
+    """Send a rich reply, with text fallback for unsupported QQ clients."""
+    try:
+        await bot.send(event, MessageSegment.markdown(markdown))
+    except Exception:
+        logger.warning("QQ Markdown reply failed; sending plain text instead")
+        await bot.send(event, fallback_text)
+
+
 async def handle_uptime_kuma_webhook(request: Request) -> Response:
     """Forward an Uptime Kuma webhook to the configured group."""
 
@@ -66,11 +86,18 @@ async def handle_uptime_kuma_webhook(request: Request) -> Response:
     try:
         await qq_bot.send_to_group(
             group_openid=config.target_group_openid,
-            message=message[:1900],
+            message=MessageSegment.markdown(_uptime_kuma_markdown(message)),
         )
     except Exception:
-        logger.exception("Failed to forward Uptime Kuma webhook to QQ group")
-        return _json_response(502, {"detail": "failed to send QQ group message"})
+        logger.warning("QQ Markdown notification failed; sending plain text instead")
+        try:
+            await qq_bot.send_to_group(
+                group_openid=config.target_group_openid,
+                message=message[:1900],
+            )
+        except Exception:
+            logger.exception("Failed to forward Uptime Kuma webhook to QQ group")
+            return _json_response(502, {"detail": "failed to send QQ group message"})
 
     return _json_response(200, {"status": "forwarded"})
 
@@ -88,13 +115,23 @@ group_info = on_command("群信息", aliases={"group-info"}, priority=10)
 
 
 @group_info.handle()
-async def show_group_info(event: GroupMessageCreateEvent) -> None:
+async def show_group_info(bot: Bot, event: GroupMessageCreateEvent) -> None:
     """Show stable QQ OpenAPI identifiers for the current group."""
-    await group_info.finish(
+    fallback_text = (
         "当前群聊信息：\n"
         f"群 ID：{event.group_id}\n"
         f"群 OpenID：{event.group_openid}\n"
         f"发送者 OpenID：{event.author.id}"
+    )
+    await _send_markdown_reply(
+        bot,
+        event,
+        "## 📋 当前群聊信息\n\n"
+        "> 将群 OpenID 填入 `TARGET_GROUP_OPENID` 即可接收告警。\n\n"
+        f"- **群 ID**：`{event.group_id}`\n"
+        f"- **群 OpenID**：`{event.group_openid}`\n"
+        f"- **发送者 OpenID**：`{event.author.id}`",
+        fallback_text,
     )
 
 
@@ -102,6 +139,11 @@ user_id = on_command("我的ID", aliases={"user-id"}, priority=10)
 
 
 @user_id.handle()
-async def show_user_id(event: GroupMessageCreateEvent) -> None:
+async def show_user_id(bot: Bot, event: GroupMessageCreateEvent) -> None:
     """Show the caller's QQ OpenAPI user identifier."""
-    await user_id.finish(f"你的 OpenID：{event.author.id}")
+    await _send_markdown_reply(
+        bot,
+        event,
+        f"## 👤 用户标识\n\n- **你的 OpenID**：`{event.author.id}`",
+        f"你的 OpenID：{event.author.id}",
+    )
