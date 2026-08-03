@@ -85,10 +85,11 @@ def _uptime_kuma_notification(payload: Any, raw_body: Any) -> tuple[str, str]:
     monitor = _object(payload.get("monitor")) if isinstance(payload, dict) else {}
     heartbeat = _object(payload.get("heartbeat")) if isinstance(payload, dict) else {}
     icon, status = _status(heartbeat.get("status"))
+    monitor_name = _first_value(monitor, "name")
 
     fields: list[tuple[str, str]] = []
-    if name := _first_value(monitor, "name"):
-        fields.append(("监控", name))
+    if monitor_name:
+        fields.append(("监控", monitor_name))
     if monitor_type := _first_value(monitor, "type"):
         fields.append(("类型", monitor_type))
     if url := _first_value(monitor, "url", "hostname"):
@@ -105,7 +106,10 @@ def _uptime_kuma_notification(payload: Any, raw_body: Any) -> tuple[str, str]:
         f"{label}：{_code(value)}" for label, value in fields
     )
     plain_fields = "\n".join(f"{label}：{value}" for label, value in fields)
-    heading = f"**{icon} Uptime Kuma · {status}**"
+    title_name = (monitor_name or "Uptime Kuma").replace("*", "\\*").replace(
+        "\n", " "
+    )[:80]
+    heading = f"**{icon} {title_name} · {status}**"
     dashboard_link = ""
     if monitor_id:
         dashboard_url = (
@@ -114,7 +118,7 @@ def _uptime_kuma_notification(payload: Any, raw_body: Any) -> tuple[str, str]:
         )
         dashboard_link = f"[查看监控]({dashboard_url})"
     markdown_prefix = f"{markdown_fields}\n\n" if markdown_fields else ""
-    plain_prefix = f"{icon} Uptime Kuma · {status}\n{plain_fields}".strip()
+    plain_prefix = f"{icon} {monitor_name or 'Uptime Kuma'} · {status}\n{plain_fields}".strip()
 
     markdown_header = f"{heading}\n\n{dashboard_link}" if dashboard_link else heading
     message_limit = max(256, 1800 - len(markdown_header) - len(markdown_prefix))
