@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from urllib.parse import quote
 
 from nonebot import get_bots, get_driver, get_plugin_config, logger, on_command
 from nonebot.adapters.qq import Bot, GroupMessageCreateEvent, MessageSegment
@@ -92,7 +93,8 @@ def _uptime_kuma_notification(payload: Any, raw_body: Any) -> tuple[str, str]:
         fields.append(("类型", monitor_type))
     if url := _first_value(monitor, "url", "hostname"):
         fields.append(("地址", url))
-    if monitor_id := _first_value(monitor, "id"):
+    monitor_id = _first_value(monitor, "id")
+    if monitor_id:
         fields.append(("监控 ID", monitor_id))
     if ping := _first_value(heartbeat, "ping"):
         fields.append(("延迟", f"{ping} ms"))
@@ -100,17 +102,24 @@ def _uptime_kuma_notification(payload: Any, raw_body: Any) -> tuple[str, str]:
         fields.append(("时间", time))
 
     markdown_fields = "\n".join(
-        f"- **{label}**：`{_code(value)}`" for label, value in fields
+        f"{label}：{_code(value)}" for label, value in fields
     )
     plain_fields = "\n".join(f"{label}：{value}" for label, value in fields)
-    heading = f"## {icon} Uptime Kuma · {status}"
-    markdown_prefix = f"{heading}\n\n{markdown_fields}" if markdown_fields else heading
+    heading = f"**{icon} Uptime Kuma · {status}**"
+    dashboard_link = ""
+    if monitor_id:
+        dashboard_url = (
+            "https://status.tano.asia/dashboard/"
+            f"{quote(monitor_id, safe='')}"
+        )
+        dashboard_link = f"[查看监控]({dashboard_url})"
+    markdown_prefix = f"{markdown_fields}\n\n" if markdown_fields else ""
     plain_prefix = f"{icon} Uptime Kuma · {status}\n{plain_fields}".strip()
 
-    markdown_message = message[: max(256, 1800 - len(markdown_prefix))].replace(
-        "```", "'''"
-    )
-    markdown = f"{markdown_prefix}\n\n```text\n{markdown_message}\n```"
+    markdown_header = f"{heading}\n\n{dashboard_link}" if dashboard_link else heading
+    message_limit = max(256, 1800 - len(markdown_header) - len(markdown_prefix))
+    markdown_message = message[:message_limit].replace("```", "'''")
+    markdown = f"{markdown_header}\n\n```text\n{markdown_prefix}{markdown_message}\n```"
     plain_text = f"{plain_prefix}\n\n{message}".strip()
     return markdown, plain_text
 
