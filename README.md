@@ -30,6 +30,21 @@ messages and send group messages. The Uptime Kuma endpoint does not require a
 token, so restrict public access to it at the reverse proxy or platform firewall
 when possible.
 
+## Alertmanager Webhook
+
+Alertmanager sends its standard JSON payload to one of two routes:
+
+- `POST https://<your-host>/alert/lanunion` uses
+  `ALERTMANAGER_LANUNION_GROUP_OPENIDS`.
+- `POST https://<your-host>/alert/tano` uses
+  `ALERTMANAGER_TANO_GROUP_OPENIDS`.
+
+Each variable accepts one or more group OpenIDs separated by commas. Every
+object in the `alerts` array becomes a separate QQ message in every configured
+target group. The message includes the alert name, status, severity, instance,
+job, service, summary, description, timestamps, and a Prometheus link when
+`generatorURL` is present.
+
 ## QQ Official Bot Webhook
 
 This project receives QQ events through HTTP Webhook, not a gateway WebSocket.
