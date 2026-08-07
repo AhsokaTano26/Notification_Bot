@@ -28,7 +28,7 @@ async def show_group_info(bot: Bot, event: GroupMessageCreateEvent) -> None:
     await _send_markdown_reply(
         bot,
         event,
-        "**群ID：**"
+        "**群ID：**\n"
         f"```text\n{group_id}\n```",
         group_id,
     )
