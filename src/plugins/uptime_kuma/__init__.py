@@ -6,8 +6,8 @@ import json
 from typing import Any
 from urllib.parse import quote
 
-from nonebot import get_bots, get_driver, get_plugin_config, logger, on_command
-from nonebot.adapters.qq import Bot, GroupMessageCreateEvent, MessageSegment
+from nonebot import get_bots, get_driver, get_plugin_config, logger
+from nonebot.adapters.qq import Bot, MessageSegment
 from nonebot.drivers import HTTPServerSetup, Request, Response
 from pydantic import BaseModel, Field
 from yarl import URL
@@ -128,20 +128,6 @@ def _uptime_kuma_notification(payload: Any, raw_body: Any) -> tuple[str, str]:
     return markdown, plain_text
 
 
-async def _send_markdown_reply(
-    bot: Bot,
-    event: GroupMessageCreateEvent,
-    markdown: str,
-    fallback_text: str,
-) -> None:
-    """Send a rich reply, with text fallback for unsupported QQ clients."""
-    try:
-        await bot.send(event, MessageSegment.markdown(markdown))
-    except Exception:
-        logger.warning("QQ Markdown reply failed; sending plain text instead")
-        await bot.send(event, fallback_text)
-
-
 async def handle_uptime_kuma_webhook(request: Request) -> Response:
     """Forward an Uptime Kuma webhook to the configured group."""
 
@@ -181,40 +167,3 @@ get_driver().setup_http_server(
         handle_func=handle_uptime_kuma_webhook,
     )
 )
-
-group_info = on_command("群信息", aliases={"group-info"}, priority=10)
-
-
-@group_info.handle()
-async def show_group_info(bot: Bot, event: GroupMessageCreateEvent) -> None:
-    """Show stable QQ OpenAPI identifiers for the current group."""
-    fallback_text = (
-        "当前群聊信息：\n"
-        f"群 ID：{event.group_id}\n"
-        f"群 OpenID：{event.group_openid}\n"
-        f"发送者 OpenID：{event.author.id}"
-    )
-    await _send_markdown_reply(
-        bot,
-        event,
-        "## 📋 当前群聊信息\n\n"
-        "> 将群 OpenID 填入 `TARGET_GROUP_OPENID` 即可接收告警。\n\n"
-        f"- **群 ID**：`{event.group_id}`\n"
-        f"- **群 OpenID**：`{event.group_openid}`\n"
-        f"- **发送者 OpenID**：`{event.author.id}`",
-        fallback_text,
-    )
-
-
-user_id = on_command("我的ID", aliases={"user-id"}, priority=10)
-
-
-@user_id.handle()
-async def show_user_id(bot: Bot, event: GroupMessageCreateEvent) -> None:
-    """Show the caller's QQ OpenAPI user identifier."""
-    await _send_markdown_reply(
-        bot,
-        event,
-        f"## 👤 用户标识\n\n- **你的 OpenID**：`{event.author.id}`",
-        f"你的 OpenID：{event.author.id}",
-    )
