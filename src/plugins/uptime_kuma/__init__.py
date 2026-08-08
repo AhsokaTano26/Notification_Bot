@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import quote
 
@@ -20,6 +21,7 @@ class Config(BaseModel):
 
 
 config = get_plugin_config(Config)
+UTC_PLUS_8 = timezone(timedelta(hours=8))
 
 
 def _json_response(status_code: int, payload: dict[str, str]) -> Response:
@@ -69,6 +71,17 @@ def _code(value: str) -> str:
     return value.replace("`", "'").replace("\n", " ")[:180]
 
 
+def _utc_plus_8(value: str) -> str:
+    """Convert an ISO 8601 UTC timestamp to UTC+8 for display."""
+    try:
+        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return value
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(UTC_PLUS_8).isoformat(sep=" ", timespec="milliseconds")
+
+
 def _status(status: Any) -> tuple[str, str]:
     labels = {
         "0": ("🔴", "故障"),
@@ -100,7 +113,7 @@ def _uptime_kuma_notification(payload: Any, raw_body: Any) -> tuple[str, str]:
     if ping := _first_value(heartbeat, "ping"):
         fields.append(("延迟", f"{ping} ms"))
     if time := _first_value(heartbeat, "time"):
-        fields.append(("时间", time))
+        fields.append(("时间", _utc_plus_8(time)))
 
     markdown_fields = "\n".join(
         f"{label}：{_code(value)}" for label, value in fields
@@ -118,7 +131,9 @@ def _uptime_kuma_notification(payload: Any, raw_body: Any) -> tuple[str, str]:
         )
         dashboard_link = f"[查看监控]({dashboard_url})"
     markdown_prefix = f"{markdown_fields}\n\n" if markdown_fields else ""
-    plain_prefix = f"{icon} {monitor_name or 'Uptime Kuma'} · {status}\n{plain_fields}".strip()
+    plain_prefix = (
+        f"{icon} {monitor_name or 'Uptime Kuma'} · {status}\n{plain_fields}"
+    ).strip()
 
     markdown_header = f"{heading}\n\n{dashboard_link}" if dashboard_link else heading
     message_limit = max(256, 1800 - len(markdown_header) - len(markdown_prefix))

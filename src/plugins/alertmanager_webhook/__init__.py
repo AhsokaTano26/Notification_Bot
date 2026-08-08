@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from nonebot import get_bots, get_driver, get_plugin_config, logger
@@ -20,6 +21,7 @@ class Config(BaseModel):
 
 
 config = get_plugin_config(Config)
+UTC_PLUS_8 = timezone(timedelta(hours=8))
 
 
 def _json_response(status_code: int, payload: dict[str, str]) -> Response:
@@ -41,6 +43,17 @@ def _value(data: dict[str, Any], key: str) -> str | None:
 
 def _code(value: str) -> str:
     return value.replace("```", "'''").replace("\n", " ")[:300]
+
+
+def _utc_plus_8(value: str) -> str:
+    """Convert an ISO 8601 UTC timestamp to UTC+8 for display."""
+    try:
+        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return value
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(UTC_PLUS_8).isoformat(sep=" ", timespec="milliseconds")
 
 
 def _group_openids(value: str) -> list[str]:
@@ -91,16 +104,14 @@ def _format_alert(
     if description := _value(annotations, "description"):
         fields.append(("描述", description))
     if starts_at := _value(alert, "startsAt"):
-        fields.append(("开始", starts_at))
+        fields.append(("开始", _utc_plus_8(starts_at)))
     if ends_at := _value(alert, "endsAt"):
         if not ends_at.startswith("0001-01-01"):
-            fields.append(("结束", ends_at))
+            fields.append(("结束", _utc_plus_8(ends_at)))
 
     markdown_fields = "\n".join(f"{label}：{_code(value)}" for label, value in fields)
     plain_fields = "\n".join(f"{label}：{value}" for label, value in fields)
     heading = f"**{icon} {title} · {status}**"
-    if generator_url := _value(alert, "generatorURL"):
-        heading += f"\n\n[查看 Prometheus]({generator_url})"
     markdown = f"{heading}\n\n```text\n{markdown_fields}\n```"
     plain_text = f"{icon} {alert_name} · {status}\n{plain_fields}".strip()
     return markdown, plain_text

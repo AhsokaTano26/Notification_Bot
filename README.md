@@ -42,8 +42,12 @@ Alertmanager sends its standard JSON payload to one of two routes:
 Each variable accepts one or more group OpenIDs separated by commas. Every
 object in the `alerts` array becomes a separate QQ message in every configured
 target group. The message includes the alert name, status, severity, instance,
-job, service, summary, description, timestamps, and a Prometheus link when
-`generatorURL` is present.
+job, service, summary, description, and timestamps. It does not include a
+Prometheus or other external link.
+
+The QQ Bot is initialized when the service starts, so Alertmanager and Uptime
+Kuma can send alerts before any QQ message arrives. Displayed webhook timestamps
+are converted from UTC to UTC+8.
 
 ## QQ Official Bot Webhook
 

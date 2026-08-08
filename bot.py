@@ -4,7 +4,9 @@ import json
 import os
 
 import nonebot
+from nonebot import logger
 from nonebot.adapters.qq import Adapter as QQAdapter
+from nonebot.adapters.qq import Bot as QQBot
 from dotenv import load_dotenv
 
 
@@ -56,6 +58,25 @@ configure_qq_adapter()
 nonebot.init()
 driver = nonebot.get_driver()
 driver.register_adapter(QQAdapter)
+
+
+@driver.on_startup
+async def connect_qq_bots() -> None:
+    """Connect configured QQ bots before inbound webhooks are received."""
+    adapter = nonebot.get_adapter(QQAdapter)
+    for bot_info in adapter.qq_config.qq_bots:
+        if bot_info.id in nonebot.get_bots():
+            continue
+
+        bot = QQBot(adapter, bot_info.id, bot_info)
+        try:
+            bot.self_info = await bot.me()
+            adapter.bot_connect(bot)
+            logger.success(f"QQ Bot {bot.self_id} initialized at startup")
+        except Exception:
+            logger.exception(f"Failed to initialize QQ Bot {bot_info.id} at startup")
+
+
 nonebot.load_from_toml("pyproject.toml")
 
 
