@@ -30,6 +30,11 @@ messages and send group messages. The Uptime Kuma endpoint does not require a
 token, so restrict public access to it at the reverse proxy or platform firewall
 when possible.
 
+Certificate-expiry messages in Uptime Kuma's default form are parsed even when
+they contain no `heartbeat` data. They show the monitored address, certificate
+domain, and remaining days: 30 days or fewer is a yellow warning, and 7 days or
+fewer is a red urgent alert.
+
 ## Alertmanager Webhook
 
 Alertmanager sends its standard JSON payload to one of two routes:

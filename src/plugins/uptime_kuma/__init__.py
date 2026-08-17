@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import quote
@@ -22,6 +23,14 @@ class Config(BaseModel):
 
 config = get_plugin_config(Config)
 UTC_PLUS_8 = timezone(timedelta(hours=8))
+URGENT_CERTIFICATE_EXPIRY_DAYS = 7
+WARNING_CERTIFICATE_EXPIRY_DAYS = 30
+CERTIFICATE_EXPIRY_PATTERN = re.compile(
+    r"^\[(?P<monitor_name>[^\]]+)]\[(?P<url>https?://[^\]]+)]\s+"
+    r"server certificate\s+(?P<domain>\S+)\s+will expire in\s+"
+    r"(?P<days>\d+)\s+days?\.?$",
+    re.IGNORECASE,
+)
 
 
 def _json_response(status_code: int, payload: dict[str, str]) -> Response:
@@ -92,14 +101,27 @@ def _status(status: Any) -> tuple[str, str]:
     return labels.get(str(status), ("⚪", "未知状态"))
 
 
-def _uptime_kuma_notification(payload: Any, raw_body: Any) -> tuple[str, str]:
-    """Build Markdown and plain-text views of an Uptime Kuma alert."""
-    message = _format_webhook_message(payload, raw_body)
-    monitor = _object(payload.get("monitor")) if isinstance(payload, dict) else {}
-    heartbeat = _object(payload.get("heartbeat")) if isinstance(payload, dict) else {}
-    icon, status = _status(heartbeat.get("status"))
-    monitor_name = _first_value(monitor, "name")
+def _certificate_expiry(message: str) -> dict[str, str] | None:
+    """Extract certificate-expiry details from Uptime Kuma's default message."""
+    match = CERTIFICATE_EXPIRY_PATTERN.match(message.strip())
+    return match.groupdict() if match else None
 
+
+def _certificate_expiry_status(days: int) -> tuple[str, str]:
+    if days <= URGENT_CERTIFICATE_EXPIRY_DAYS:
+        return "🔴", "证书即将到期"
+    if days <= WARNING_CERTIFICATE_EXPIRY_DAYS:
+        return "🟡", "证书即将到期"
+    return "🔵", "证书到期提醒"
+
+
+def _notification_fields(
+    monitor: dict[str, Any],
+    heartbeat: dict[str, Any],
+    monitor_name: str | None,
+    certificate_expiry: dict[str, str] | None,
+) -> list[tuple[str, str]]:
+    """Build structured fields for a notification."""
     fields: list[tuple[str, str]] = []
     if monitor_name:
         fields.append(("监控", monitor_name))
@@ -107,27 +129,50 @@ def _uptime_kuma_notification(payload: Any, raw_body: Any) -> tuple[str, str]:
         fields.append(("类型", monitor_type))
     if url := _first_value(monitor, "url", "hostname"):
         fields.append(("地址", url))
-    monitor_id = _first_value(monitor, "id")
-    if monitor_id:
+    elif certificate_expiry:
+        fields.append(("地址", certificate_expiry["url"]))
+    if certificate_expiry:
+        fields.extend(
+            [
+                ("证书域名", certificate_expiry["domain"]),
+                ("剩余时间", f"{certificate_expiry['days']} 天"),
+            ]
+        )
+    if monitor_id := _first_value(monitor, "id"):
         fields.append(("监控 ID", monitor_id))
     if ping := _first_value(heartbeat, "ping"):
         fields.append(("延迟", f"{ping} ms"))
     if time := _first_value(heartbeat, "time"):
         fields.append(("时间", _utc_plus_8(time)))
+    return fields
 
-    markdown_fields = "\n".join(
-        f"{label}：{_code(value)}" for label, value in fields
-    )
+
+def _uptime_kuma_notification(payload: Any, raw_body: Any) -> tuple[str, str]:
+    """Build Markdown and plain-text views of an Uptime Kuma alert."""
+    message = _format_webhook_message(payload, raw_body)
+    monitor = _object(payload.get("monitor")) if isinstance(payload, dict) else {}
+    heartbeat = _object(payload.get("heartbeat")) if isinstance(payload, dict) else {}
+    icon, status = _status(heartbeat.get("status"))
+    monitor_name = _first_value(monitor, "name")
+    certificate_expiry = _certificate_expiry(message)
+    if certificate_expiry:
+        days = int(certificate_expiry["days"])
+        icon, status = _certificate_expiry_status(days)
+        monitor_name = monitor_name or certificate_expiry["monitor_name"]
+
+    fields = _notification_fields(monitor, heartbeat, monitor_name, certificate_expiry)
+    monitor_id = _first_value(monitor, "id")
+
+    markdown_fields = "\n".join(f"{label}：{_code(value)}" for label, value in fields)
     plain_fields = "\n".join(f"{label}：{value}" for label, value in fields)
-    title_name = (monitor_name or "Uptime Kuma").replace("*", "\\*").replace(
-        "\n", " "
-    )[:80]
+    title_name = (
+        (monitor_name or "Uptime Kuma").replace("*", "\\*").replace("\n", " ")[:80]
+    )
     heading = f"**{icon} {title_name} · {status}**"
     dashboard_link = ""
     if monitor_id:
         dashboard_url = (
-            "https://status.tano.asia/dashboard/"
-            f"{quote(monitor_id, safe='')}"
+            f"https://status.tano.asia/dashboard/{quote(monitor_id, safe='')}"
         )
         dashboard_link = f"[查看监控]({dashboard_url})"
     markdown_prefix = f"{markdown_fields}\n\n" if markdown_fields else ""
