@@ -119,7 +119,7 @@ get_driver().setup_http_server(
 
 | 情况 | 状态码 | 响应体 |
 |---|---|---|
-| 请求体为空 | 400 | `{"detail": "webhook body is empty"}` |
+| 请求体为空 | — | **不可达，见下方说明** |
 | QQ bot 未连接 | 503 | `{"detail": "QQ bot is not connected"}` |
 | Markdown 发送失败且纯文本降级也失败 | 502 | `{"detail": "failed to send QQ group message"}` |
 | 成功 | 200 | `{"status": "forwarded"}` |
@@ -127,6 +127,31 @@ get_driver().setup_http_server(
 
 Markdown 发送失败时先降级发送纯文本（截断到 1900 字符），失败才返回 502 —— 这条
 既有行为保留。
+
+### `400 webhook body is empty` 是死代码
+
+原设计假设空请求体会命中 `if not message: return _json_response(400, ...)`。**实测
+证明该分支永远不会触发**，属于既有代码中已存在的缺陷，与本次改动无关：
+
+`_uptime_kuma_notification` 返回的第二个值是 `plain_text`，它的构造方式是
+`f"{plain_prefix}\n\n{message}".strip()`，而 `plain_prefix` 恒为
+`"{icon} {monitor_name or 'Uptime Kuma'} · {status}"` 加字段列表。即使 `message`
+为空串，表头本身也保证了结果非空：
+
+```
+_uptime_kuma_notification(None, b"")
+  -> markdown: '**⚪ Uptime Kuma · 未知状态**\n\n```text\n\n```'
+  -> plain   : '⚪ Uptime Kuma · 未知状态'      # 非空
+```
+
+驱动侧的分析是对的（FastAPI 驱动用 `contextlib.suppress(Exception)` 包裹
+`await request.json()`，空 body 时 `json` 为 `None`、`content` 为 `b""`，不会抛
+500），错的只是「`_format_webhook_message` 返回空串」到「handler 判定为空」这一步
+推论——handler 看的是 `plain_text`，不是那个空串。
+
+**因此空 body 的请求会继续走到 `_get_qq_bot()`**，返回 503（无 bot）或 200/502
+（有 bot）。本设计不修改这一行为，因为改动它属于独立议题，会波及
+`_uptime_kuma_notification` 的返回值语义。是否需要清理这个死分支，另行决定。
 
 ## 测试
 
@@ -222,17 +247,28 @@ pyright
 .venv/bin/python -m pip install pytest pytest-asyncio
 ```
 
-无需 QQ 凭据的路由冒烟测试。空请求体会命中 `400 webhook body is empty`，该分支在
-bot 连接检查之前，因此可用来证明路由确实注册成功。
-
-该断言已对照驱动源码确认：FastAPI 驱动用 `contextlib.suppress(Exception)` 包裹
-`await request.json()`，空 body 时 `json` 为 `None`、`content` 为 `b""`，
-`_format_webhook_message` 据此返回空串，从而命中 400 分支，不会抛 500。
+无需 QQ 凭据的路由冒烟测试。判据是**「不是 404」**：只要响应来自我们的 handler，
+就说明路由挂上了。
 
 ```bash
-curl -sX POST http://localhost:8080/uptime-kuma/lanunion   # 期望 400 + "webhook body is empty"
-curl -sX POST http://localhost:8080/uptime-kuma/unknown    # 期望 404，作为对照
+for p in /uptime-kuma /uptime-kuma/lanunion /uptime-kuma/unknown; do
+  printf '%-26s -> %s\n' "$p" "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080$p)"
+done
 ```
+
+预期（本地未配置可用 QQ 凭据时）：
+
+| 路径 | 状态码 |
+|---|---|
+| `/uptime-kuma` | 503 |
+| `/uptime-kuma/lanunion` | 503 |
+| `/uptime-kuma/unknown` | 404（对照组） |
+
+503 的响应体为 `{"detail": "QQ bot is not connected"}`。若 `.env` 中 QQ 凭据可用，
+bot 会成功连接，前两条变为 200 或发送失败时的 502——判据始终是那条对照线。
+
+**不要期待 400**：空 body 不会命中 `webhook body is empty` 分支，该分支不可达，
+详见上文。
 
 真正的端到端验证需在 Uptime Kuma 中新建一个 Webhook 通知指向
 `https://<host>/uptime-kuma/lanunion`，并确认消息落在 lanunion 群。
