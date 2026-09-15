@@ -13,13 +13,22 @@ See [Docs](https://nonebot.dev/)
 
 ## Uptime Kuma Webhook
 
+Uptime Kuma sends its Webhook notification payload to one of two routes:
+
+- `POST https://<your-host>/uptime-kuma` uses `TARGET_GROUP_OPENID`.
+- `POST https://<your-host>/uptime-kuma/lanunion` uses
+  `TARGET_GROUP_LANUNION_OPENID`.
+
+Each variable holds a single group OpenID; they are not comma-separated. Both
+are required — the bot refuses to start when either is missing.
+
 1. Copy `.env.example` to `.env` and fill in the QQ Official Bot credentials:
    `QQ_APP_ID`, `QQ_TOKEN`, and `QQ_SECRET`. Keep
    `QQ_C2C_GROUP_AT_MESSAGES=true`; it is required for group command events.
-   In the destination QQ group, send `/群信息` and use the returned **群 OpenID** as
-   `TARGET_GROUP_OPENID`; this is not the visible QQ group number.
-2. In Uptime Kuma, create a Webhook notification pointing to
-   `POST https://<your-host>/uptime-kuma`.
+   In each destination QQ group, send `/群信息` and use the returned **群 OpenID**
+   as that route's variable; this is not the visible QQ group number.
+2. In Uptime Kuma, create a Webhook notification pointing to the route whose
+   group should receive it, for example `POST https://<your-host>/uptime-kuma/lanunion`.
 
 For Uptime Kuma's default JSON body, the Bot formats `monitor` and `heartbeat`
 fields into monitor name, type, address, ID, status, latency, and timestamp;
@@ -60,8 +69,9 @@ This project receives QQ events through HTTP Webhook, not a gateway WebSocket.
 In the QQ Developer Platform, set the callback URL to
 `https://<your-host>/qq/webhook` and complete its verification request. Keep
 `QQ_USE_WEBSOCKET=false` and `QQ_VERIFY_WEBHOOK=true` in `.env`; the adapter
-uses `QQ_SECRET` to verify signed events. The same domain receives both paths:
-`/qq/webhook` for QQ and `/uptime-kuma` for Uptime Kuma.
+uses `QQ_SECRET` to verify signed events. The same domain receives every path:
+`/qq/webhook` for QQ, `/uptime-kuma` and `/uptime-kuma/lanunion` for Uptime
+Kuma, and `/alert/lanunion` and `/alert/tano` for Alertmanager.
 
 ## Docker Deployment
 
@@ -78,6 +88,7 @@ uses `QQ_SECRET` to verify signed events. The same domain receives both paths:
 3. Inspect the service with `docker compose logs -f notification-bot`.
 
 The application listens on port `8080`; map it behind an HTTPS reverse proxy
-before exposing `/qq/webhook` and `/uptime-kuma` to the internet. Stop it with
+before exposing `/qq/webhook` and the Uptime Kuma webhook paths to the
+internet. Stop it with
 `docker compose down`. For a non-container installation, use
 `pip install -r requirements.txt` and start with `python bot.py`.
