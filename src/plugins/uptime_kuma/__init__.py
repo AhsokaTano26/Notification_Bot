@@ -19,6 +19,7 @@ class Config(BaseModel):
     """Plugin settings loaded from the NoneBot environment."""
 
     target_group_openid: str = Field(min_length=1)
+    target_group_lanunion_openid: str = Field(min_length=1)
 
 
 config = get_plugin_config(Config)
@@ -188,8 +189,11 @@ def _uptime_kuma_notification(payload: Any, raw_body: Any) -> tuple[str, str]:
     return markdown, plain_text
 
 
-async def handle_uptime_kuma_webhook(request: Request) -> Response:
-    """Forward an Uptime Kuma webhook to the configured group."""
+async def _forward_uptime_kuma_webhook(
+    request: Request,
+    target_group_openid: str,
+) -> Response:
+    """Forward an Uptime Kuma webhook to one configured group."""
 
     markdown, message = _uptime_kuma_notification(request.json, request.content)
     if not message:
@@ -202,14 +206,14 @@ async def handle_uptime_kuma_webhook(request: Request) -> Response:
 
     try:
         await qq_bot.send_to_group(
-            group_openid=config.target_group_openid,
+            group_openid=target_group_openid,
             message=MessageSegment.markdown(markdown),
         )
     except Exception:
         logger.warning("QQ Markdown notification failed; sending plain text instead")
         try:
             await qq_bot.send_to_group(
-                group_openid=config.target_group_openid,
+                group_openid=target_group_openid,
                 message=message[:1900],
             )
         except Exception:
@@ -219,11 +223,31 @@ async def handle_uptime_kuma_webhook(request: Request) -> Response:
     return _json_response(200, {"status": "forwarded"})
 
 
+async def handle_uptime_kuma_webhook(request: Request) -> Response:
+    """Forward an Uptime Kuma webhook to the configured group."""
+    return await _forward_uptime_kuma_webhook(request, config.target_group_openid)
+
+
+async def handle_lanunion_uptime_kuma_webhook(request: Request) -> Response:
+    """Forward a Lanunion Uptime Kuma webhook to its configured group."""
+    return await _forward_uptime_kuma_webhook(
+        request, config.target_group_lanunion_openid
+    )
+
+
 get_driver().setup_http_server(
     HTTPServerSetup(
         path=URL("/uptime-kuma"),
         method="POST",
         name="uptime-kuma-webhook",
         handle_func=handle_uptime_kuma_webhook,
+    )
+)
+get_driver().setup_http_server(
+    HTTPServerSetup(
+        path=URL("/uptime-kuma/lanunion"),
+        method="POST",
+        name="uptime-kuma-lanunion-webhook",
+        handle_func=handle_lanunion_uptime_kuma_webhook,
     )
 )
