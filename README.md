@@ -44,6 +44,22 @@ they contain no `heartbeat` data. They show the monitored address, certificate
 domain, and remaining days: 30 days or fewer is a yellow warning, and 7 days or
 fewer is a red urgent alert.
 
+## General Webhook
+
+Send a JSON notification to `POST https://<your-host>/webhook/general`. Set
+`GENERAL_WEBHOOK_GROUP_OPENID` to the destination group's OpenID (available via
+`/群信息` in that group). The endpoint sends one QQ group message per request.
+See the [complete JSON definition](docs/general-webhook-json.md) for the schema,
+field constraints, formatting, examples, and responses.
+
+```json
+{
+  "title": "部署通知",
+  "message": "服务已更新",
+  "level": "success"
+}
+```
+
 ## Alertmanager Webhook
 
 Alertmanager sends its standard JSON payload to one of two routes:
@@ -71,7 +87,8 @@ In the QQ Developer Platform, set the callback URL to
 `QQ_USE_WEBSOCKET=false` and `QQ_VERIFY_WEBHOOK=true` in `.env`; the adapter
 uses `QQ_SECRET` to verify signed events. The same domain receives every path:
 `/qq/webhook` for QQ, `/uptime-kuma` and `/uptime-kuma/lanunion` for Uptime
-Kuma, and `/alert/lanunion` and `/alert/tano` for Alertmanager.
+Kuma, `/alert/lanunion` and `/alert/tano` for Alertmanager, and
+`/webhook/general` for general notifications.
 
 ## Docker Deployment
 
@@ -88,7 +105,7 @@ Kuma, and `/alert/lanunion` and `/alert/tano` for Alertmanager.
 3. Inspect the service with `docker compose logs -f notification-bot`.
 
 The application listens on port `8080`; map it behind an HTTPS reverse proxy
-before exposing `/qq/webhook` and the Uptime Kuma webhook paths to the
+before exposing `/qq/webhook` or any notification webhook path to the
 internet. Stop it with
 `docker compose down`. For a non-container installation, use
 `pip install -r requirements.txt` and start with `python bot.py`.

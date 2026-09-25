@@ -14,4 +14,5 @@ nonebot.init(
     driver="~fastapi",
     target_group_openid="test-openid",
     target_group_lanunion_openid="test-lanunion-openid",
+    general_webhook_group_openid="test-generic-openid",
 )
