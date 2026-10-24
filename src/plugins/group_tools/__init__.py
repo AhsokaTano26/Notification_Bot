@@ -13,7 +13,7 @@ async def _send_markdown_reply(
     """Send a rich reply, with text fallback for unsupported QQ clients."""
     try:
         await bot.send(event, MessageSegment.markdown(markdown))
-    except Exception:
+    except Exception:  # noqa: BLE001 -- QQ API errors use the plain-text fallback
         logger.warning("QQ Markdown reply failed; sending plain text instead")
         await bot.send(event, fallback_text)
 
@@ -28,7 +28,6 @@ async def show_group_info(bot: Bot, event: GroupMessageCreateEvent) -> None:
     await _send_markdown_reply(
         bot,
         event,
-        "**群ID：**\n"
-        f"```text\n{group_id}\n```",
+        f"**群ID：**\n```text\n{group_id}\n```",
         group_id,
     )

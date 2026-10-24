@@ -11,6 +11,34 @@
 
 See [Docs](https://nonebot.dev/)
 
+## Dependencies and Development
+
+Python 3.10+ is required. The runtime requirements in `pyproject.toml` and
+`requirements.txt` are kept in sync. The October 2026 update uses
+[NoneBot 2.5.0](https://pypi.org/project/nonebot2/),
+[QQ adapter 1.7.3](https://pypi.org/project/nonebot-adapter-qq/), and
+[python-dotenv 1.2.4](https://pypi.org/project/python-dotenv/), with direct
+dependencies on HTTPX 0.28.1, Pydantic 2.14.1 and yarl 1.25.1. Version ranges
+allow compatible updates while excluding the next breaking release line.
+
+All application plugins are maintained locally in `src/plugins`; no external
+NoneBot plugin packages are currently registered. The development extra includes
+NB CLI, Ruff, Pyright, pytest and pytest-asyncio. Install or update the local
+development environment with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv venv  # First-time setup only; use any supported Python 3.10+ interpreter.
+uv pip install --upgrade -r pyproject.toml --extra dev
+source .venv/bin/activate
+pytest
+ruff check .
+ruff format --check .
+pyright
+```
+
+These checks run without sending real QQ messages or Kuma pushes. Runtime-only
+installations can continue using `pip install --upgrade -r requirements.txt`.
+
 ## Uptime Kuma Webhook
 
 Uptime Kuma sends its Webhook notification payload to one of two routes:
@@ -59,6 +87,37 @@ field constraints, formatting, examples, and responses.
   "level": "success"
 }
 ```
+
+## Kuma Health Push
+
+The `kuma_health` plugin reports this deployment's live QQ status to an existing
+Uptime Kuma **Push** monitor. Copy that monitor's Push URL to the environment:
+
+```dotenv
+KUMA_PUSH_URL=https://kuma.example.com/api/push/your-monitor-token
+QQ_USE_WEBSOCKET=true
+DRIVER=~fastapi+~httpx+~websockets
+```
+
+The WebSocket client dependency is included in the project's requirements.
+The default HTTP Webhook configuration above does not provide a WebSocket
+session and therefore reports `down` under this check. Leave `KUMA_PUSH_URL`
+empty to disable health reporting.
+
+Checks run immediately at startup and then every 60 seconds. Every configured
+QQ bot must be registered, have a ready WebSocket session, and successfully
+complete a fresh QQ `me()` identity request before the plugin pushes `up`.
+Disconnected or unready bots, disabled WebSockets, identity errors and
+10-second probe timeouts push `down` with a diagnostic message. A bot that
+recovers can report `up` on the next check.
+
+The plugin updates `status`, `msg` and measured `ping` using the
+[Kuma Push API](https://github.com/louislam/uptime-kuma/wiki/Internal-API), so
+URLs copied with existing query parameters also work. Push failures are logged
+without exposing the URL's token and retried on the next cycle. Shutdown
+cancels the background task and closes its HTTP client. If this process stops
+or cannot reach Kuma, Kuma detects the missing heartbeats using the existing
+monitor's interval; allow some margin beyond the 60-second reporting period.
 
 ## Alertmanager Webhook
 

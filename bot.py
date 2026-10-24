@@ -4,13 +4,13 @@ import json
 import os
 
 import nonebot
+from dotenv import load_dotenv
 from nonebot import logger
 from nonebot.adapters.qq import Adapter as QQAdapter
 from nonebot.adapters.qq import Bot as QQBot
-from dotenv import load_dotenv
 
 
-def _get_boolean_env(name: str, default: bool) -> bool:
+def _get_boolean_env(name: str, *, default: bool) -> bool:
     value = os.getenv(name)
     if value is None:
         return default
@@ -40,10 +40,10 @@ def configure_qq_adapter() -> None:
                 "id": credentials["QQ_APP_ID"],
                 "token": credentials["QQ_TOKEN"],
                 "secret": credentials["QQ_SECRET"],
-                "use_websocket": _get_boolean_env("QQ_USE_WEBSOCKET", False),
+                "use_websocket": _get_boolean_env("QQ_USE_WEBSOCKET", default=False),
                 "intent": {
                     "c2c_group_at_messages": _get_boolean_env(
-                        "QQ_C2C_GROUP_AT_MESSAGES", True
+                        "QQ_C2C_GROUP_AT_MESSAGES", default=True
                     )
                 },
             }
@@ -65,6 +65,8 @@ async def connect_qq_bots() -> None:
     """Connect configured QQ bots before inbound webhooks are received."""
     adapter = nonebot.get_adapter(QQAdapter)
     for bot_info in adapter.qq_config.qq_bots:
+        if bot_info.use_websocket:
+            continue
         if bot_info.id in nonebot.get_bots():
             continue
 
@@ -73,7 +75,7 @@ async def connect_qq_bots() -> None:
             bot.self_info = await bot.me()
             adapter.bot_connect(bot)
             logger.success(f"QQ Bot {bot.self_id} initialized at startup")
-        except Exception:
+        except Exception:  # noqa: BLE001 -- log adapter/API startup failures
             logger.exception(f"Failed to initialize QQ Bot {bot_info.id} at startup")
 
 

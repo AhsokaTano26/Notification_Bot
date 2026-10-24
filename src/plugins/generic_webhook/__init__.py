@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from yarl import URL
 
 if TYPE_CHECKING:
-    from nonebot.drivers.fastapi import Driver as FastAPIDriver
+    from nonebot.drivers import ASGIMixin
 
 MAX_MESSAGE_LENGTH = 1900
 DISPLAY_TIMEZONE = timezone(timedelta(hours=8))
@@ -182,7 +182,7 @@ async def handle_generic_webhook(request: Request) -> Response:
     return _json_response(200, {"status": "forwarded"})
 
 
-cast("FastAPIDriver", get_driver()).setup_http_server(
+cast("ASGIMixin", get_driver()).setup_http_server(
     HTTPServerSetup(
         path=URL("/webhook/general"),
         method="POST",

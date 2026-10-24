@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import quote
 
 from nonebot import get_bots, get_driver, get_plugin_config, logger
@@ -13,6 +13,9 @@ from nonebot.adapters.qq import Bot, MessageSegment
 from nonebot.drivers import HTTPServerSetup, Request, Response
 from pydantic import BaseModel, Field
 from yarl import URL
+
+if TYPE_CHECKING:
+    from nonebot.drivers import ASGIMixin
 
 
 class Config(BaseModel):
@@ -209,14 +212,14 @@ async def _forward_uptime_kuma_webhook(
             group_openid=target_group_openid,
             message=MessageSegment.markdown(markdown),
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 -- QQ API errors use the plain-text fallback
         logger.warning("QQ Markdown notification failed; sending plain text instead")
         try:
             await qq_bot.send_to_group(
                 group_openid=target_group_openid,
                 message=message[:1900],
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 -- contain failures at the webhook boundary
             logger.exception("Failed to forward Uptime Kuma webhook to QQ group")
             return _json_response(502, {"detail": "failed to send QQ group message"})
 
@@ -235,7 +238,7 @@ async def handle_lanunion_uptime_kuma_webhook(request: Request) -> Response:
     )
 
 
-get_driver().setup_http_server(
+cast("ASGIMixin", get_driver()).setup_http_server(
     HTTPServerSetup(
         path=URL("/uptime-kuma"),
         method="POST",
@@ -243,7 +246,7 @@ get_driver().setup_http_server(
         handle_func=handle_uptime_kuma_webhook,
     )
 )
-get_driver().setup_http_server(
+cast("ASGIMixin", get_driver()).setup_http_server(
     HTTPServerSetup(
         path=URL("/uptime-kuma/lanunion"),
         method="POST",

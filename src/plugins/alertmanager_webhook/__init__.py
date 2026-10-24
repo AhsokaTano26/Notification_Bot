@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from nonebot import get_bots, get_driver, get_plugin_config, logger
 from nonebot.adapters.qq import Bot, MessageSegment
 from nonebot.drivers import HTTPServerSetup, Request, Response
 from pydantic import BaseModel
 from yarl import URL
+
+if TYPE_CHECKING:
+    from nonebot.drivers import ASGIMixin
 
 
 class Config(BaseModel):
@@ -105,9 +108,8 @@ def _format_alert(
         fields.append(("描述", description))
     if starts_at := _value(alert, "startsAt"):
         fields.append(("开始", _utc_plus_8(starts_at)))
-    if ends_at := _value(alert, "endsAt"):
-        if not ends_at.startswith("0001-01-01"):
-            fields.append(("结束", _utc_plus_8(ends_at)))
+    if (ends_at := _value(alert, "endsAt")) and not ends_at.startswith("0001-01-01"):
+        fields.append(("结束", _utc_plus_8(ends_at)))
 
     markdown_fields = "\n".join(f"{label}：{_code(value)}" for label, value in fields)
     plain_fields = "\n".join(f"{label}：{value}" for label, value in fields)
@@ -128,18 +130,17 @@ async def _send_alert(
             group_openid=target_group_openid,
             message=MessageSegment.markdown(markdown),
         )
-        return True
-    except Exception:
+    except Exception:  # noqa: BLE001 -- QQ API errors use the plain-text fallback
         logger.warning("Alertmanager Markdown message failed; sending plain text")
         try:
             await bot.send_to_group(
                 group_openid=target_group_openid,
                 message=fallback_text[:1900],
             )
-            return True
-        except Exception:
+        except Exception:  # noqa: BLE001 -- contain failures at the webhook boundary
             logger.exception("Failed to forward Alertmanager alert to QQ group")
             return False
+    return True
 
 
 async def _forward_alertmanager_webhook(
@@ -203,7 +204,7 @@ async def handle_tano_alertmanager_webhook(request: Request) -> Response:
     )
 
 
-get_driver().setup_http_server(
+cast("ASGIMixin", get_driver()).setup_http_server(
     HTTPServerSetup(
         path=URL("/alert/lanunion"),
         method="POST",
@@ -211,7 +212,7 @@ get_driver().setup_http_server(
         handle_func=handle_lanunion_alertmanager_webhook,
     )
 )
-get_driver().setup_http_server(
+cast("ASGIMixin", get_driver()).setup_http_server(
     HTTPServerSetup(
         path=URL("/alert/tano"),
         method="POST",
