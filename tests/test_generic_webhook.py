@@ -169,7 +169,9 @@ async def test_general_webhook_reports_missing_group(
 ) -> None:
     bot = FakeBot()
     monkeypatch.setattr(generic_webhook, "_get_qq_bot", lambda: bot)
-    monkeypatch.setattr(generic_webhook.config, "general_webhook_group_openid", "")
+    from src.plugins.runtime_config import store
+
+    await store.set_setting("GENERAL_WEBHOOK_GROUP_OPENID", "")
 
     response = await _post({"message": "hello"})
 

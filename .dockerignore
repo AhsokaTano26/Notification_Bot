@@ -1,6 +1,13 @@
 # ----- Project -----
 
-# .env.*
+.git
+.env
+.env.*
+data/
+**/*.sqlite3
+**/*.sqlite3-*
+**/*.db
+**/*.db-*
 .dockerignore
 Dockerfile
 docker-compose.yml

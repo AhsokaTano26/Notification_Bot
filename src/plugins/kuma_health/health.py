@@ -9,14 +9,14 @@ from time import monotonic
 from typing import Literal
 
 import httpx
-from nonebot import get_adapter, get_bots, get_plugin_config, logger
+from nonebot import get_adapter, get_bots, logger, require
 from nonebot.adapters.qq import Adapter, Bot
 
-from .config import Config
+require("src.plugins.runtime_config")
+from src.plugins import runtime_config
 
 CHECK_INTERVAL = 60
 REQUEST_TIMEOUT = 10.0
-config = get_plugin_config(Config)
 _push_request_active: ContextVar[bool] = ContextVar("kuma_push_request", default=False)
 
 
@@ -54,7 +54,7 @@ async def check_health() -> tuple[Literal["up", "down"], str]:
 
 async def report_health(client: httpx.AsyncClient) -> None:
     """Push current health; a failed delivery is retried on the next cycle."""
-    push_url = config.kuma_push_url.strip()
+    push_url = await runtime_config.store.get_setting("KUMA_PUSH_URL")
     if not push_url:
         return
 

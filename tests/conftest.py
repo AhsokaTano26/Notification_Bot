@@ -1,14 +1,16 @@
-"""Shared pytest setup for the notification bot plugins.
+"""Initialize NoneBot once; give every test a fresh temporary SQLite database."""
 
-Importing any plugin module runs ``nonebot.get_plugin_config``, which needs
-NoneBot to be initialized first. Doing that once here keeps every test module
-free of that boilerplate.
+from __future__ import annotations
 
-The keyword arguments win over any ``.env`` file, so a developer's real group
-OpenIDs never leak into test assertions.
-"""
+from typing import TYPE_CHECKING
 
 import nonebot
+import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from src.plugins.runtime_config.database import SettingsStore
 
 nonebot.init(
     driver="~fastapi",
@@ -17,3 +19,22 @@ nonebot.init(
     general_webhook_group_openid="test-generic-openid",
     kuma_push_url="",
 )
+
+nonebot.load_plugin("src.plugins.runtime_config")
+
+
+@pytest.fixture(autouse=True)
+async def settings_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> SettingsStore:
+    """Never read production configuration or write the deployment database."""
+    from src.plugins import runtime_config
+    from src.plugins.runtime_config.database import SettingsStore
+
+    store = SettingsStore(tmp_path / "settings.sqlite3")
+    await store.initialize({"test-admin"})
+    await store.set_setting("TARGET_GROUP_OPENID", "test-openid")
+    await store.set_setting("TARGET_GROUP_LANUNION_OPENID", "test-lanunion-openid")
+    await store.set_setting("GENERAL_WEBHOOK_GROUP_OPENID", "test-generic-openid")
+    monkeypatch.setattr(runtime_config, "store", store)
+    return store

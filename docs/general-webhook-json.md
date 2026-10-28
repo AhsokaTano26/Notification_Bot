@@ -4,7 +4,7 @@
 
 - 请求：`POST /webhook/general`
 - 请求头：`Content-Type: application/json`
-- 目标群：环境变量 `GENERAL_WEBHOOK_GROUP_OPENID`，填写 QQ 官方机器人使用的**群 OpenID**，不是普通群号。可在目标群发送 `/群信息` 获取。
+- 目标群：超级管理员发送 `/配置 set GENERAL_WEBHOOK_GROUP_OPENID 群OpenID` 保存到数据库；也可在目标群使用 `/配置 set GENERAL_WEBHOOK_GROUP_OPENID 当前群`。这里使用 QQ 官方机器人的**群 OpenID**，不是普通群号，可通过 `/群信息` 获取。
 - 每个有效且发送成功的请求只向该群发送一条纯文本 QQ 消息。服务未配置目标群或 QQ 机器人未连接时返回 HTTP 503。
 
 ## 请求体定义

@@ -7,14 +7,16 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
 
-from nonebot import get_bots, get_driver, get_plugin_config, logger
+from nonebot import get_bots, get_driver, logger, require
 from nonebot.adapters.qq import Bot
 from nonebot.drivers import HTTPServerSetup, Request, Response
-from pydantic import BaseModel
 from yarl import URL
 
 if TYPE_CHECKING:
     from nonebot.drivers import ASGIMixin
+
+require("src.plugins.runtime_config")
+from src.plugins import runtime_config
 
 MAX_MESSAGE_LENGTH = 1900
 DISPLAY_TIMEZONE = timezone(timedelta(hours=8))
@@ -27,15 +29,6 @@ LEVELS = {
     "warning": ("🟡", "警告"),
     "error": ("🔴", "错误"),
 }
-
-
-class Config(BaseModel):
-    """Target QQ group OpenID supplied through the environment."""
-
-    general_webhook_group_openid: str = ""
-
-
-config = get_plugin_config(Config)
 
 
 def _json_response(status_code: int, detail: dict[str, str]) -> Response:
@@ -162,10 +155,12 @@ async def handle_generic_webhook(request: Request) -> Response:
             {"detail": "invalid notification JSON or QQ message too long"},
         )
 
-    group_openid = config.general_webhook_group_openid.strip()
+    group_openid = await runtime_config.store.get_setting(
+        "GENERAL_WEBHOOK_GROUP_OPENID"
+    )
     if not group_openid:
         return _json_response(
-            503, {"detail": "GENERAL_WEBHOOK_GROUP_OPENID is missing"}
+            503, {"detail": "general webhook target group is not configured"}
         )
 
     bot = _get_qq_bot()

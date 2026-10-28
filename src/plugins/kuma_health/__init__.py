@@ -9,14 +9,12 @@ import httpx
 from nonebot import get_driver
 from nonebot.plugin import PluginMetadata
 
-from .config import Config
-from .health import CHECK_INTERVAL, REQUEST_TIMEOUT, config, report_health
+from .health import CHECK_INTERVAL, REQUEST_TIMEOUT, report_health
 
 __plugin_meta__ = PluginMetadata(
     name="kuma_health",
     description="Report live QQ WebSocket and identity API health to Uptime Kuma",
-    usage="Set KUMA_PUSH_URL to an existing Kuma Push monitor URL",
-    config=Config,
+    usage="超级管理员通过 /配置 set KUMA_PUSH_URL URL 设置已有的 Kuma Push 监控",
     supported_adapters={"~qq"},
 )
 
@@ -35,9 +33,9 @@ async def _run_health_checks() -> None:
 
 @driver.on_startup
 async def start_health_task() -> None:
-    """Start one background task when this deployment has a Push URL."""
+    """Start an idle-capable task so a URL can be configured without restart."""
     global _task  # noqa: PLW0603 -- plugin owns its task's lifecycle
-    if config.kuma_push_url.strip() and (_task is None or _task.done()):
+    if _task is None or _task.done():
         _task = create_task(_run_health_checks(), name="kuma_health")
 
 

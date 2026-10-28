@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock
 
 import httpx
@@ -20,11 +21,14 @@ from nonebot.adapters.qq.models import User
 from src.plugins import kuma_health
 from src.plugins.kuma_health import health
 
+if TYPE_CHECKING:
+    from src.plugins.runtime_config.database import SettingsStore
+
 PUSH_URL = "https://kuma.example.com/api/push/test-token"
 
 
 @pytest.fixture
-def qq_bot(monkeypatch: pytest.MonkeyPatch) -> Bot:
+async def qq_bot(monkeypatch: pytest.MonkeyPatch, settings_store: SettingsStore) -> Bot:
     info = BotInfo(id="test-app", secret="test-secret", use_websocket=True)
     adapter = Mock(spec=Adapter)
     adapter.qq_config = QQConfig.model_validate({"qq_bots": [info]})
@@ -40,7 +44,7 @@ def qq_bot(monkeypatch: pytest.MonkeyPatch) -> Bot:
     monkeypatch.setattr(bot, "me", AsyncMock(return_value=bot.self_info))
     monkeypatch.setattr(health, "get_adapter", lambda _: adapter)
     monkeypatch.setattr(health, "get_bots", lambda: {bot.self_id: bot})
-    monkeypatch.setattr(health.config, "kuma_push_url", PUSH_URL)
+    await settings_store.set_setting("KUMA_PUSH_URL", PUSH_URL)
     return bot
 
 
@@ -165,11 +169,10 @@ async def test_reset_during_identity_request_pushes_down(
 
 
 async def test_replaces_copied_push_parameters_and_preserves_other_query_values(
-    qq_bot: Bot, monkeypatch: pytest.MonkeyPatch
+    qq_bot: Bot, settings_store: SettingsStore
 ) -> None:
-    monkeypatch.setattr(
-        health.config,
-        "kuma_push_url",
+    await settings_store.set_setting(
+        "KUMA_PUSH_URL",
         f"{PUSH_URL}?status=up&msg=OK&ping=&extra=keep",
     )
     qq_bot.reset()
@@ -220,14 +223,30 @@ async def test_push_failure_does_not_stop_following_checks(
     assert "test-token" not in warnings[0]
 
 
-async def test_unconfigured_plugin_does_not_start(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_unconfigured_plugin_starts_idle_for_later_configuration() -> None:
+    try:
+        await kuma_health.start_health_task()
+        await asyncio.sleep(0)
+        assert kuma_health._task is not None
+        assert not kuma_health._task.done()
+    finally:
+        await kuma_health.stop_health_task()
+
+
+@pytest.mark.usefixtures("qq_bot")
+async def test_database_url_can_enable_change_and_disable_pushes(
+    settings_store: SettingsStore,
 ) -> None:
-    monkeypatch.setattr(health.config, "kuma_push_url", "  ")
-
-    await kuma_health.start_health_task()
-
-    assert kuma_health._task is None
+    await settings_store.set_setting("KUMA_PUSH_URL", "")
+    assert await _pushes() == []
+    await settings_store.set_setting("KUMA_PUSH_URL", PUSH_URL)
+    assert (await _pushes())[0].url.path == "/api/push/test-token"
+    await settings_store.set_setting(
+        "KUMA_PUSH_URL", "https://other.example/api/push/changed-token"
+    )
+    assert (await _pushes())[0].url.host == "other.example"
+    await settings_store.set_setting("KUMA_PUSH_URL", "")
+    assert await _pushes() == []
 
 
 async def test_background_checks_run_immediately_then_every_sixty_seconds(

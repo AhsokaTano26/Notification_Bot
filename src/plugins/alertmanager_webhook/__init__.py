@@ -6,24 +6,17 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, cast
 
-from nonebot import get_bots, get_driver, get_plugin_config, logger
+from nonebot import get_bots, get_driver, logger, require
 from nonebot.adapters.qq import Bot, MessageSegment
 from nonebot.drivers import HTTPServerSetup, Request, Response
-from pydantic import BaseModel
 from yarl import URL
 
 if TYPE_CHECKING:
     from nonebot.drivers import ASGIMixin
 
+require("src.plugins.runtime_config")
+from src.plugins import runtime_config
 
-class Config(BaseModel):
-    """Plugin settings loaded from the NoneBot environment."""
-
-    alertmanager_lanunion_group_openids: str = ""
-    alertmanager_tano_group_openids: str = ""
-
-
-config = get_plugin_config(Config)
 UTC_PLUS_8 = timezone(timedelta(hours=8))
 
 
@@ -60,7 +53,7 @@ def _utc_plus_8(value: str) -> str:
 
 
 def _group_openids(value: str) -> list[str]:
-    """Parse a comma-separated environment variable into unique group OpenIDs."""
+    """Parse a database group setting into unique group OpenIDs."""
     openids = (openid.strip() for openid in value.split(","))
     return list(dict.fromkeys(openid for openid in openids if openid))
 
@@ -191,7 +184,11 @@ async def handle_lanunion_alertmanager_webhook(request: Request) -> Response:
     return await _forward_alertmanager_webhook(
         request,
         "lanunion",
-        _group_openids(config.alertmanager_lanunion_group_openids),
+        _group_openids(
+            await runtime_config.store.get_setting(
+                "ALERTMANAGER_LANUNION_GROUP_OPENIDS"
+            )
+        ),
     )
 
 
@@ -200,7 +197,9 @@ async def handle_tano_alertmanager_webhook(request: Request) -> Response:
     return await _forward_alertmanager_webhook(
         request,
         "tano",
-        _group_openids(config.alertmanager_tano_group_openids),
+        _group_openids(
+            await runtime_config.store.get_setting("ALERTMANAGER_TANO_GROUP_OPENIDS")
+        ),
     )
 
 

@@ -8,24 +8,17 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import quote
 
-from nonebot import get_bots, get_driver, get_plugin_config, logger
+from nonebot import get_bots, get_driver, logger, require
 from nonebot.adapters.qq import Bot, MessageSegment
 from nonebot.drivers import HTTPServerSetup, Request, Response
-from pydantic import BaseModel, Field
 from yarl import URL
 
 if TYPE_CHECKING:
     from nonebot.drivers import ASGIMixin
 
+require("src.plugins.runtime_config")
+from src.plugins import runtime_config
 
-class Config(BaseModel):
-    """Plugin settings loaded from the NoneBot environment."""
-
-    target_group_openid: str = Field(min_length=1)
-    target_group_lanunion_openid: str = Field(min_length=1)
-
-
-config = get_plugin_config(Config)
 UTC_PLUS_8 = timezone(timedelta(hours=8))
 URGENT_CERTIFICATE_EXPIRY_DAYS = 7
 WARNING_CERTIFICATE_EXPIRY_DAYS = 30
@@ -197,7 +190,10 @@ async def _forward_uptime_kuma_webhook(
     target_group_openid: str,
 ) -> Response:
     """Forward an Uptime Kuma webhook to one configured group."""
-
+    if not target_group_openid:
+        return _json_response(
+            503, {"detail": "Uptime Kuma target group is not configured"}
+        )
     markdown, message = _uptime_kuma_notification(request.json, request.content)
     if not message:
         return _json_response(400, {"detail": "webhook body is empty"})
@@ -228,13 +224,15 @@ async def _forward_uptime_kuma_webhook(
 
 async def handle_uptime_kuma_webhook(request: Request) -> Response:
     """Forward an Uptime Kuma webhook to the configured group."""
-    return await _forward_uptime_kuma_webhook(request, config.target_group_openid)
+    return await _forward_uptime_kuma_webhook(
+        request, await runtime_config.store.get_setting("TARGET_GROUP_OPENID")
+    )
 
 
 async def handle_lanunion_uptime_kuma_webhook(request: Request) -> Response:
     """Forward a Lanunion Uptime Kuma webhook to its configured group."""
     return await _forward_uptime_kuma_webhook(
-        request, config.target_group_lanunion_openid
+        request, await runtime_config.store.get_setting("TARGET_GROUP_LANUNION_OPENID")
     )
 
 
