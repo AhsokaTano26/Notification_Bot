@@ -40,6 +40,14 @@ async def enable_burn_after_reading(bot: Bot, event: GroupMessageCreateEvent) ->
     """Enable recalls for the sender, including this enabling command."""
     if event.author.bot:
         return
+    if event.author.member_role != "member":
+        await manager.disable(bot.self_id, event.group_openid, event.get_user_id())
+        await bot.send(
+            event,
+            "QQ 官方接口不允许 Bot 撤回群主或管理员的消息，无法为你开启阅后即焚。"
+            "此功能仅适用于普通群成员。",
+        )
+        return
     manager.enable(bot.self_id, event.group_openid, event.get_user_id())
     manager.schedule(bot, event)
     await bot.send(

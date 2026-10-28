@@ -103,7 +103,12 @@ field constraints, formatting, examples, and responses.
 开关与待执行任务保存在内存中，Bot 重启后恢复默认关闭状态。
 Bot 需要具备撤回群成员消息的权限，并在 QQ 群内获准接收全量消息，才能覆盖
 该用户的普通发言；只接收 @ 消息时，仅能处理已收到的消息。
-QQ 撤回接口调用失败会记录警告，权限和实际撤回效果需在真实 QQ 群内验证。
+根据 [QQ 官方撤回接口文档](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_messages_message_id.delete.html)，
+即使 Bot 已是群管理员，也只能撤回普通群成员的消息，无法撤回群主或管理员消息。
+群主和管理员发送开启命令时会收到限制提示，不会开启；请用普通成员账号验证。
+QQ 撤回接口失败时，警告日志会包含 HTTP 状态、QQ `code`、`message` 和 `trace_id`，
+便于区分参数无效（`40061001`）、无权限（`40062003`）和超时（`40064004`）。
+权限和实际撤回效果需在真实 QQ 群内验证。
 
 手动验证：用户 A 发送 `阅后即焚`，再发一条普通消息，两条用户消息应在各自发送
 约 10 秒后被撤回；Bot 提示、Webhook 通知和未开启的用户 B 的消息应保留。

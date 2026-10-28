@@ -8,6 +8,7 @@ from time import time
 from typing import TYPE_CHECKING
 
 from nonebot import logger
+from nonebot.adapters.qq.exception import ActionFailed
 
 if TYPE_CHECKING:
     from nonebot.adapters.qq import Bot, GroupMessageCreateEvent
@@ -47,7 +48,12 @@ class RecallManager:
     def schedule(self, bot: Bot, event: GroupMessageCreateEvent) -> None:
         """Recall an opted-in user's message ten seconds after it was sent."""
         scope = (bot.self_id, event.group_openid, event.get_user_id())
-        if scope not in self._enabled or event.author.bot or not event.id:
+        if (
+            scope not in self._enabled
+            or event.author.bot
+            or event.author.member_role != "member"
+            or not event.id
+        ):
             return
         tasks = self._tasks.setdefault(scope, {})
         if event.id in tasks:
@@ -79,6 +85,12 @@ class RecallManager:
         try:
             await sleep(delay)
             await bot.delete_group_message(group_openid=group_id, message_id=message_id)
+        except ActionFailed as exc:
+            logger.warning(
+                f"Failed to recall QQ group message {message_id} in {group_id}: "
+                f"http_status={exc.status_code}, code={exc.code}, "
+                f"message={exc.message!r}, trace_id={exc.trace_id}"
+            )
         except Exception as exc:  # noqa: BLE001 -- contain background QQ API failures
             logger.warning(
                 f"Failed to recall QQ group message {message_id} in {group_id}: "

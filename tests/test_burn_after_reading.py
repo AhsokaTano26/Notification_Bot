@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import TYPE_CHECKING, Any, cast
 
 import nonebot
@@ -10,7 +11,9 @@ import pytest
 import pytest_asyncio
 from nonebot.adapters.qq import Bot, C2CMessageCreateEvent, GroupMessageCreateEvent
 from nonebot.adapters.qq.config import BotInfo
+from nonebot.adapters.qq.exception import ActionFailed
 from nonebot.adapters.qq.models import PostGroupMessagesReturn
+from nonebot.drivers import Response
 from nonebot.message import handle_event
 
 if TYPE_CHECKING:
@@ -28,6 +31,7 @@ class FakeQQAdapter:
         self.config = nonebot.get_driver().config
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.fail_recall = False
+        self.recall_error: Exception | None = None
 
     @classmethod
     def get_name(cls) -> str:
@@ -40,6 +44,8 @@ class FakeQQAdapter:
             return PostGroupMessagesReturn(id="bot-reply")
         if api == "delete_group_message" and self.fail_recall:
             raise RuntimeError
+        if api == "delete_group_message" and self.recall_error is not None:
+            raise self.recall_error
         return None
 
 
@@ -316,3 +322,78 @@ async def test_private_messages_and_bot_events_are_ignored(
 
     assert delay.seconds == []
     assert adapter.calls == []
+
+
+@pytest.mark.parametrize("role", ["owner", "admin"])
+@pytest.mark.usefixtures("plugin")
+async def test_privileged_users_receive_a_limit_notice_instead_of_being_enabled(
+    delay: ControlledDelay, role: str
+) -> None:
+    adapter = FakeQQAdapter()
+    bot = make_bot(adapter)
+    enable_event = group_event("阅后即焚", message_id="enable")
+    enable_event.author = enable_event.author.model_copy(update={"member_role": role})
+    await handle_event(bot, enable_event)
+    await handle_event(bot, group_event(message_id="next-message"))
+    delay.release.set()
+    await asyncio.sleep(0)
+
+    assert delay.seconds == []
+    assert len(adapter.calls) == 1
+    assert adapter.calls[0][0] == "post_group_messages"
+    assert "无法" in adapter.calls[0][1]["content"]
+    assert "群主" in adapter.calls[0][1]["content"]
+
+
+@pytest.mark.parametrize("role", ["owner", "admin"])
+async def test_promoted_users_messages_are_not_scheduled(
+    recall_manager: RecallManager, delay: ControlledDelay, role: str
+) -> None:
+    adapter = FakeQQAdapter()
+    bot = make_bot(adapter)
+    recall_manager.enable(bot.self_id, "group-a", "user-a")
+    event = group_event()
+    event.author = event.author.model_copy(update={"member_role": role})
+    recall_manager.schedule(bot, event)
+    delay.release.set()
+    await asyncio.sleep(0)
+
+    assert delay.seconds == []
+    assert adapter.calls == []
+
+
+async def test_qq_failure_logs_error_code_message_status_and_trace_without_raw_data(
+    recall_manager: RecallManager,
+    delay: ControlledDelay,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.plugins.burn_after_reading import recall
+
+    warnings: list[str] = []
+    monkeypatch.setattr(recall.logger, "warning", warnings.append)
+    adapter = FakeQQAdapter()
+    adapter.recall_error = ActionFailed(
+        Response(
+            400,
+            headers={"X-Tps-trace-ID": "test-trace-id", "Authorization": "secret"},
+            content=json.dumps(
+                {
+                    "code": 40062003,
+                    "message": "no permission",
+                    "data": {"access_token": "secret"},
+                }
+            ),
+        )
+    )
+    bot = make_bot(adapter)
+    recall_manager.enable(bot.self_id, "group-a", "user-a")
+    recall_manager.schedule(bot, group_event())
+    delay.release.set()
+    await asyncio.sleep(0)
+
+    assert len(warnings) == 1
+    assert "400" in warnings[0]
+    assert "40062003" in warnings[0]
+    assert "no permission" in warnings[0]
+    assert "test-trace-id" in warnings[0]
+    assert "secret" not in warnings[0]
